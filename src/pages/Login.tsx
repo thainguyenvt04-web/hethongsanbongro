@@ -48,7 +48,7 @@ export const Login = () => {
           return;
         }
 
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -58,7 +58,13 @@ export const Login = () => {
           }
         });
         if (error) throw error;
-        toast.success('Vui lòng kiểm tra email để xác nhận!');
+        
+        if (data.session) {
+          toast.success('Đăng ký thành công!');
+          navigate('/');
+        } else {
+          toast.success('Vui lòng kiểm tra email để xác nhận!');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,

@@ -37,6 +37,9 @@ CREATE POLICY "Cho phép insert bookings" ON public.bookings FOR INSERT WITH CHE
 DROP POLICY IF EXISTS "Cho phép update bookings" ON public.bookings;
 CREATE POLICY "Cho phép update bookings" ON public.bookings FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "Cho phép delete bookings" ON public.bookings;
+CREATE POLICY "Cho phép delete bookings" ON public.bookings FOR DELETE USING (true);
+
 -- Insert dummy data cho sân
 INSERT INTO public.courts (id, name, status) VALUES 
 ('1', 'Sân A - Trong nhà (VIP)', 'available'),
