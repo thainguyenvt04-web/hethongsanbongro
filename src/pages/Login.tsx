@@ -48,23 +48,18 @@ export const Login = () => {
           return;
         }
 
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
+            emailRedirectTo: window.location.origin,
             data: {
               phone: phone,
             }
           }
         });
         if (error) throw error;
-        
-        if (data.session) {
-          toast.success('Đăng ký thành công!');
-          navigate('/');
-        } else {
-          toast.success('Vui lòng kiểm tra email để xác nhận!');
-        }
+        toast.success('Vui lòng kiểm tra email để xác nhận!');
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
