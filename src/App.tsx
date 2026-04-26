@@ -11,10 +11,11 @@ import { Control } from './pages/Control';
 import { Admin } from './pages/Admin';
 import { MyBookings } from './pages/MyBookings';
 import { Toaster } from './components/ui/sonner';
+import { AdminLayout } from './components/AdminLayout';
 
 const ProtectedRoute = ({ children, requireAdmin = false }: { children: React.ReactNode, requireAdmin?: boolean }) => {
   const { user, role, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
@@ -40,7 +41,7 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
-          
+
           <Route path="/" element={
             <ProtectedRoute>
               <Layout />
@@ -51,12 +52,15 @@ export default function App() {
             <Route path="my-bookings" element={<MyBookings />} />
             <Route path="checkin" element={<Checkin />} />
             <Route path="camera" element={<Camera />} />
-            <Route path="control" element={<Control />} />
-            <Route path="admin" element={
-              <ProtectedRoute requireAdmin={true}>
-                <Admin />
-              </ProtectedRoute>
-            } />
+            <Route path="controls" element={<Control />} />
+          </Route>
+
+          <Route element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout />
+            </ProtectedRoute>
+          }>
+            <Route path="/admin" element={<Admin />} />
           </Route>
         </Routes>
       </Router>

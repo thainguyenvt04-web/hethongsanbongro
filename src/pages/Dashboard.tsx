@@ -93,30 +93,24 @@ export const Dashboard = () => {
     };
   }, []);
 
+  const virtualProgressRef = useRef(0);
+
   // ====== SCROLL-DRIVEN VIDEO/CANVAS + TEXT ======
   useEffect(() => {
     const video = videoRef.current;
     const scrolly = scrollyRef.current;
-    const scroller = document.getElementById('main-scroll-container');
-    
-    if (!scrolly || !scroller) return;
+
+    if (!scrolly) return;
 
     let rafId: number;
-    let ticking = false;
 
-    const update = () => {
-      ticking = false;
-      const rect = scrolly.getBoundingClientRect();
-      const scrolled = -rect.top; 
-      const scrollyHeight = scrolly.offsetHeight - window.innerHeight;
-      if (scrollyHeight <= 0) return;
-
-      const progress = Math.max(0, Math.min(1, scrolled / scrollyHeight));
+    const updateRender = () => {
+      const progress = virtualProgressRef.current;
 
       // If frames are ready → draw on canvas (smooth, many frames)
       const frames = framesRef.current;
       if (frames.length > 0 && canvasRef.current) {
-        const frameIndex = Math.min(frames.length - 1, Math.floor(progress * frames.length));
+        const frameIndex = Math.floor(progress * (frames.length - 1));
         if (frameIndex !== lastFrameIndexRef.current) {
           lastFrameIndexRef.current = frameIndex;
           const canvas = canvasRef.current;
@@ -130,33 +124,54 @@ export const Dashboard = () => {
           }
         }
       } else if (video && video.duration && isFinite(video.duration)) {
-        // Fallback: use video seeking (less smooth but works immediately)
         video.currentTime = progress * video.duration;
       }
 
-      // Only update React state when section actually changes
-      const newSection = Math.min(4, Math.floor(progress * 5));
+      // 5 sections (0 to 4)
+      const newSection = Math.floor(progress * 5) % 5;
       if (newSection !== lastSectionRef.current) {
         lastSectionRef.current = newSection;
         setActiveSection(newSection);
       }
     };
 
-    const onScroll = () => {
-      if (!ticking) {
-        ticking = true;
-        rafId = requestAnimationFrame(update);
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault(); // Stop normal page scroll while hovering
+
+      const delta = e.deltaY * 0.0008; // Adjust scroll sensitivity
+      let newProgress = virtualProgressRef.current + delta;
+
+      // Infinite loop wrap-around
+      if (newProgress < 0) {
+        newProgress = 1 - (Math.abs(newProgress) % 1);
+      } else {
+        newProgress = newProgress % 1;
       }
+
+      virtualProgressRef.current = newProgress;
+
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateRender);
     };
 
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-    update();
+    scrolly.addEventListener('wheel', onWheel, { passive: false });
+    updateRender();
 
     return () => {
-      scroller.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(rafId);
+      scrolly.removeEventListener('wheel', onWheel);
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, [framesReady]);
+
+  const [services, setServices] = useState(() => {
+    const stored = localStorage.getItem('courtServices');
+    return stored ? JSON.parse(stored) : [
+      { id: 'water', icon: '💧', name: 'Nước Suối', desc: '500ml ướp lạnh', price: '10.000đ' },
+      { id: 'revive', icon: '⚡', name: 'Revive / Pocari', desc: 'Bù khoáng', price: '15.000đ' },
+      { id: 'ball', icon: '🏀', name: 'Thuê bóng Spalding', desc: 'Size 7 FIBA', price: '30.000đ/ca' },
+      { id: 'ice', icon: '🧊', name: 'Đá viên', desc: 'Ly/xô nhỏ', price: 'Miễn phí', free: true },
+    ];
+  });
 
   const fetchCourts = async () => {
     try {
@@ -178,23 +193,25 @@ export const Dashboard = () => {
   const getStatusText = (s: string) => s === 'available' ? 'Trống' : s === 'in_use' ? 'Đang chơi' : 'Bảo trì';
 
   const sections = [
-    { tag: 'GIỚI THIỆU', title: <>Sân Bóng Rổ<br/><span className="text-orange-400">Đẳng Cấp Quốc Tế</span></>, desc: 'Hệ thống sân bóng rổ quy chuẩn FIBA đầu tiên tại khu vực.' },
-    { tag: 'CÔNG NGHỆ', title: <>Check-in Bằng<br/><span className="text-cyan-400">Mã QR Tự Động</span></>, desc: 'Quét mã trên điện thoại — cửa sân tự mở. Không cần nhân viên.' },
-    { tag: 'TIÊU CHUẨN', title: <>Sàn Gỗ Chuẩn<br/><span className="text-amber-400">FIBA Quốc Tế</span></>, desc: 'Ánh sáng thi đấu chuyên nghiệp. Sàn gỗ chống trượt, đàn hồi tối ưu.' },
-    { tag: 'ĐỊA ĐIỂM', title: <>CourtKings<br/><span className="text-rose-400">Arena KHTN</span></>, desc: '227 Nguyễn Văn Cừ, P.4, Q.5, TP.HCM — Mở cửa 06:00 – 22:00.' },
-    { tag: 'ĐẶT SÂN', title: <>Sẵn Sàng<br/><span className="text-orange-400">Chiến Đấu?</span></>, desc: 'Đặt sân ngay hôm nay. Chỉ vài bước đơn giản.' },
+    { tag: 'GIỚI THIỆU', title: <>Sân Bóng Rổ<br /><span className="text-orange-400">Đẳng Cấp Quốc Tế</span></>, desc: 'Hệ thống sân bóng rổ quy chuẩn FIBA đầu tiên tại khu vực.' },
+    { tag: 'CÔNG NGHỆ', title: <>Check-in Bằng<br /><span className="text-cyan-400">Mã QR Tự Động</span></>, desc: 'Quét mã trên điện thoại — cửa sân tự mở. Không cần nhân viên.' },
+    { tag: 'TIÊU CHUẨN', title: <>Sàn Gỗ Chuẩn<br /><span className="text-amber-400">FIBA Quốc Tế</span></>, desc: 'Ánh sáng thi đấu chuyên nghiệp. Sàn gỗ chống trượt, đàn hồi tối ưu.' },
+    { tag: 'ĐỊA ĐIỂM', title: <>CourtKings<br /><span className="text-rose-400">Arena KHTN</span></>, desc: '839/8, Lê Văn Lương, Phước Kiển, Nhà Bè, TP.HCM — Mở cửa 06:00 – 22:00.' },
+    { tag: 'ĐẶT SÂN', title: <>Sẵn Sàng<br /><span className="text-orange-400">Chiến Đấu?</span></>, desc: 'Đặt sân ngay hôm nay. Chỉ vài bước đơn giản.' },
   ];
 
   return (
     <div>
       {/* =========================================================
-          SCROLLYTELLING ZONE — Hybrid: video (instant) → canvas (smooth)
+          HOVER-TO-SCRUB SCROLLYTELLING ZONE
           ========================================================= */}
-      <div ref={scrollyRef} style={{ height: '500vh' }} className="relative">
-
+      <div
+        ref={scrollyRef}
+        className="relative w-full h-[50vh] min-h-[400px] overflow-hidden group cursor-ns-resize shadow-2xl"
+      >
         {/* CSS STICKY — browser handles at compositor level, zero lag */}
-        <div className="sticky top-0 w-full h-screen overflow-hidden">
-          
+        <div className="absolute top-0 w-full h-full overflow-hidden">
+
           {/* Video shows immediately, no wait */}
           <video
             ref={videoRef}
@@ -219,11 +236,10 @@ export const Dashboard = () => {
           {sections.map((section, i) => (
             <div
               key={i}
-              className={`absolute inset-0 flex flex-col justify-center px-8 md:px-16 transition-all duration-700 ease-out ${
-                activeSection === i
-                  ? 'opacity-100 translate-y-0'
-                  : 'opacity-0 translate-y-8 pointer-events-none'
-              }`}
+              className={`absolute inset-0 flex flex-col justify-center px-8 md:px-16 transition-all duration-700 ease-out ${activeSection === i
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-8 pointer-events-none'
+                }`}
             >
               <span className="text-orange-400 text-[10px] font-bold tracking-[0.3em] uppercase mb-4 w-fit px-3 py-1 rounded-full border border-orange-500/30 bg-orange-500/10 backdrop-blur-sm">
                 {section.tag}
@@ -306,9 +322,9 @@ export const Dashboard = () => {
               </div>
               <div className="p-5">
                 <ul className="space-y-4 text-sm text-slate-400">
-                  {['Trang bị đồ thể thao, không mang giày đế đinh cứng vào sân.','Không mang thức ăn, kẹo cao su, hút thuốc lá vào khu vực thi đấu.','Có mặt và quét QR Check-in sớm 10 phút. Đèn/cửa tự tắt khi hết giờ.','Hủy giờ đặt báo trước 24h để được hoàn 50% tiền cọc.'].map((r, i) => (
+                  {['Trang bị đồ thể thao, không mang giày đế đinh cứng vào sân.', 'Không mang thức ăn, kẹo cao su, hút thuốc lá vào khu vực thi đấu.', 'Có mặt và quét QR Check-in sớm 10 phút. Đèn/cửa tự tắt khi hết giờ.', 'Hủy giờ đặt báo trước 24h để được hoàn 50% tiền cọc.'].map((r, i) => (
                     <li key={i} className="flex items-start gap-3">
-                      <span className="w-6 h-6 bg-orange-500/20 text-orange-400 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">{i+1}</span>
+                      <span className="w-6 h-6 bg-orange-500/20 text-orange-400 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">{i + 1}</span>
                       <span>{r}</span>
                     </li>
                   ))}
@@ -333,12 +349,7 @@ export const Dashboard = () => {
                 <h3 className="font-bold flex items-center gap-2 text-white"><Droplets className="h-5 w-5 text-blue-400" /> Dịch Vụ & Tiếp Sức</h3>
               </div>
               <div className="p-5">
-                {[
-                  { icon: '💧', name: 'Nước Suối', desc: '500ml ướp lạnh', price: '10.000đ' },
-                  { icon: '⚡', name: 'Revive / Pocari', desc: 'Bù khoáng', price: '15.000đ' },
-                  { icon: '🏀', name: 'Thuê bóng Spalding', desc: 'Size 7 FIBA', price: '30.000đ/ca' },
-                  { icon: '🧊', name: 'Đá viên', desc: 'Ly/xô nhỏ', price: 'Miễn phí', free: true },
-                ].map((item, i) => (
+                {services.map((item: any, i: number) => (
                   <div key={i} className={`flex justify-between items-center py-3.5 ${i < 3 ? 'border-b border-white/5' : ''}`}>
                     <div className="flex items-center gap-3">
                       <span className="text-lg">{item.icon}</span>
@@ -347,7 +358,7 @@ export const Dashboard = () => {
                         <p className="text-[11px] text-slate-500">{item.desc}</p>
                       </div>
                     </div>
-                    <span className={`text-sm font-bold ${item.free ? 'text-emerald-400' : 'text-orange-400'}`}>{item.price}</span>
+                    <span className={`text-sm font-bold ${item.free || item.price === 'Miễn phí' ? 'text-emerald-400' : 'text-orange-400'}`}>{item.price}</span>
                   </div>
                 ))}
               </div>

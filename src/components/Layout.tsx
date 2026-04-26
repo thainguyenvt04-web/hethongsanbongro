@@ -32,7 +32,7 @@ export const Layout = () => {
     { path: '/my-bookings', label: 'Đơn hàng của tôi', icon: Receipt },
     { path: '/checkin', label: 'Quét Mã Mở Cửa', icon: ScanLine },
     { path: '/camera', label: 'Camera', icon: Video },
-    { path: '/control', label: 'Điều khiển', icon: Settings2 },
+    { path: '/controls', label: 'Điều khiển', icon: Settings2 },
   ];
 
   if (role === 'admin') {

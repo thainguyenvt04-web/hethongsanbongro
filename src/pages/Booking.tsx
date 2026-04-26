@@ -26,10 +26,21 @@ export const Booking = () => {
   const [payosCheckoutUrl, setPayosCheckoutUrl] = useState<string | null>(null);
   const [payosQrCode, setPayosQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [customerName, setCustomerName] = useState(() => localStorage.getItem('savedCustomerName') || '');
-  const [customerPhone, setCustomerPhone] = useState(() => localStorage.getItem('savedCustomerPhone') || '');
+  const getInitialContact = (type: 'name' | 'phone') => {
+    const staticVal = localStorage.getItem(`staticCustomer${type === 'name' ? 'Name' : 'Phone'}`);
+    const tempVal = localStorage.getItem(`tempCustomer${type === 'name' ? 'Name' : 'Phone'}`);
+    const expiry = localStorage.getItem('tempCustomerExpiry');
+    
+    if (tempVal && expiry && Date.now() < parseInt(expiry, 10)) {
+      return tempVal;
+    }
+    return staticVal || localStorage.getItem(`savedCustomer${type === 'name' ? 'Name' : 'Phone'}`) || '';
+  };
+
+  const [customerName, setCustomerName] = useState(() => getInitialContact('name'));
+  const [customerPhone, setCustomerPhone] = useState(() => getInitialContact('phone'));
   const [isEditingContact, setIsEditingContact] = useState(() => {
-    return !(localStorage.getItem('savedCustomerName') && localStorage.getItem('savedCustomerPhone'));
+    return !(getInitialContact('name') && getInitialContact('phone'));
   });
   const [receiptData, setReceiptData] = useState<{
     date: Date;
@@ -68,7 +79,7 @@ export const Booking = () => {
     const currentHour = new Date().getHours();
 
     // 1. Nếu ngày hôm nay và giờ đã qua -> Đỏ
-    if (dateStr === todayStr && hour <= currentHour) {
+    if (dateStr === todayStr && hour < currentHour) {
       return 'passed';
     }
     // Hoặc ngày trong quá khứ -> Đỏ
@@ -184,16 +195,38 @@ export const Booking = () => {
         ...selectedHours.map(hour => ({ date: dateStr, hour }))
       ]);
 
-      // Lưu lại thông tin liên hệ cho lần sau
-      localStorage.setItem('savedCustomerName', customerName.trim());
-      localStorage.setItem('savedCustomerPhone', customerPhone.trim());
+      // Lưu lại thông tin liên hệ tĩnh/động cho lần sau
+      const currentStaticName = localStorage.getItem('staticCustomerName') || localStorage.getItem('savedCustomerName');
+      const currentStaticPhone = localStorage.getItem('staticCustomerPhone') || localStorage.getItem('savedCustomerPhone');
+      const trimmedName = customerName.trim();
+      const trimmedPhone = customerPhone.trim();
+
+      if (!currentStaticName || !currentStaticPhone) {
+         localStorage.setItem('staticCustomerName', trimmedName);
+         localStorage.setItem('staticCustomerPhone', trimmedPhone);
+         localStorage.setItem('savedCustomerName', trimmedName); // tương thích ngược
+         localStorage.setItem('savedCustomerPhone', trimmedPhone);
+         localStorage.removeItem('tempCustomerName');
+         localStorage.removeItem('tempCustomerPhone');
+         localStorage.removeItem('tempCustomerExpiry');
+      } else if (trimmedName !== currentStaticName || trimmedPhone !== currentStaticPhone) {
+         localStorage.setItem('tempCustomerName', trimmedName);
+         localStorage.setItem('tempCustomerPhone', trimmedPhone);
+         localStorage.setItem('tempCustomerExpiry', (Date.now() + 15 * 60 * 1000).toString());
+      } else {
+         localStorage.removeItem('tempCustomerName');
+         localStorage.removeItem('tempCustomerPhone');
+         localStorage.removeItem('tempCustomerExpiry');
+      }
       setIsEditingContact(false);
+
+      // Tạo Order Code duy nhất cho cả Booking ID và PayOS
+      const generatedOrderCode = Number(String(Date.now()).slice(-9) + Math.floor(Math.random() * 10));
 
       // Lưu booking vào store chung để trang Điều khiển có thể đọc
       const courtName = courts.find(c => c.id === selectedCourt)?.name || `Sân ${selectedCourt}`;
-      const bookingId = `BK_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       await saveBooking({
-        id: bookingId,
+        id: generatedOrderCode.toString(), // Dùng orderCode làm ID
         courtId: selectedCourt,
         courtName,
         userId: user.id,
@@ -225,7 +258,7 @@ export const Booking = () => {
           body: JSON.stringify({
             amount: calculateTotal(),
             description: `Thanh toan san`,
-            orderCode: Number(String(Date.now()).slice(-9)), // Tăng số chữ số để tránh trùng lặp
+            orderCode: generatedOrderCode, // Sử dụng Order Code chung
             returnUrl: `${window.location.origin}/#/booking`,
             cancelUrl: `${window.location.origin}/#/booking`
           })
@@ -234,6 +267,11 @@ export const Booking = () => {
         if (payosData && payosData.error === 0 && payosData.data?.checkoutUrl) {
           setPayosCheckoutUrl(payosData.data.checkoutUrl);
           setPayosQrCode(payosData.data.qrCode);
+          // Lưu lại thông tin PayOS vào local storage để MyBookings có thể hiển thị lại
+          localStorage.setItem(`payos_${generatedOrderCode}`, JSON.stringify({
+            checkoutUrl: payosData.data.checkoutUrl,
+            qrCode: payosData.data.qrCode
+          }));
         } else {
           console.error('PayOS error response:', payosData);
           setPayosCheckoutUrl(null); 
@@ -303,31 +341,6 @@ export const Booking = () => {
       </div>
 
       <Card className="border-0 shadow-sm bg-white overflow-hidden">
-        <CardHeader className="bg-slate-50/50 border-b pb-4">
-          <div className="flex flex-col sm:flex-row justify-between gap-4">
-            <div>
-              <CardTitle>Bảng Giá Biến Động</CardTitle>
-              <CardDescription className="flex flex-wrap items-center gap-4 mt-2">
-                <span className="flex items-center gap-1.5 whitespace-nowrap"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Sáng: {(courts.find(c => c.id === selectedCourt)?.price_morning || 2000)}đ/h</span>
-                <span className="flex items-center gap-1.5 whitespace-nowrap"><div className="w-2 h-2 rounded-full bg-amber-400"></div>Chiều: {(courts.find(c => c.id === selectedCourt)?.price_afternoon || 2000)}đ/h</span>
-                <span className="flex items-center gap-1.5 whitespace-nowrap"><div className="w-2 h-2 rounded-full bg-slate-900"></div>Tối: {(courts.find(c => c.id === selectedCourt)?.price_evening || 2000)}đ/h</span>
-              </CardDescription>
-            </div>
-            <div className="w-full sm:w-[250px]">
-              <Select value={selectedCourt} onValueChange={setSelectedCourt}>
-                <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Chọn một sân" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courts.map(court => (
-                    <SelectItem key={court.id} value={court.id}>{court.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        
         <CardContent className="pt-6 space-y-8">
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center">
@@ -372,10 +385,30 @@ export const Booking = () => {
           <div className="h-[1px] w-full bg-slate-100"></div>
 
           <div className="space-y-4">
+             <h3 className="text-lg font-semibold flex items-center">
+               2. Chọn Sân
+             </h3>
+             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {courts.map(court => (
+                   <div 
+                      key={court.id}
+                      onClick={() => setSelectedCourt(court.id)}
+                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-center min-h-[90px] ${selectedCourt === court.id ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/20' : 'border-slate-200 hover:border-orange-300'}`}
+                   >
+                     <div className={`font-bold text-lg ${selectedCourt === court.id ? 'text-orange-700' : 'text-slate-700'}`}>{court.name}</div>
+                     <div className="text-sm mt-1 text-slate-500">{(court as any).status === 'maintenance' ? 'Đang bảo trì' : 'Đang hoạt động'}</div>
+                   </div>
+                ))}
+             </div>
+          </div>
+
+          <div className="h-[1px] w-full bg-slate-100"></div>
+
+          <div className="space-y-4">
              <div className="flex justify-between items-end mb-4">
                <div>
                   <h3 className="text-lg font-semibold flex items-center">
-                    2. Chọn Khoảng Thời Gian
+                    3. Chọn Khoảng Thời Gian
                   </h3>
                   <p className="text-sm text-slate-500 flex items-center gap-1 mt-1"><Info className="w-4 h-4"/> Có thể chọn nhiều khung giờ liên tiếp</p>
                </div>
@@ -385,89 +418,113 @@ export const Booking = () => {
              </div>
 
              {/* Thêm chú thích cho các khung giờ */}
-             <div className="flex flex-wrap gap-3 mb-3 text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 border border-red-200"></div> Đã qua</span>
-                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></div> Đã đặt (Chờ TT)</span>
-                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></div> Đã đặt & Thanh toán</span>
-                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-sky-500 border border-sky-600"></div> Đang chọn</span>
+             <div className="flex flex-wrap gap-3 mb-6 text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-600 border border-blue-700"></div> Đang chọn</span>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-600 border border-green-700"></div> Đã đặt & Thanh toán</span>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-yellow-500 border border-yellow-600"></div> Đã đặt (Chờ TT)</span>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-600 border border-red-700"></div> Đã qua</span>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-purple-600 border border-purple-700"></div> Hiện tại</span>
              </div>
 
-             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                <AnimatePresence mode="popLayout">
-                  {Array.from({ length: 18 }).map((_, i) => {
-                    const hour = i + 6; 
-                    const slotStatus = getSlotStatus(selectedDate, hour);
-                    const isSelected = selectedHours.includes(hour);
-                    const isDisabled = slotStatus === 'passed' || slotStatus === 'paid' || slotStatus === 'unpaid';
-                    const price = getPricePerHour(hour);
+             <div className="space-y-8">
+                {[
+                  { name: 'Sáng', hours: [6, 7, 8, 9, 10, 11], priceProp: 'price_morning' as keyof Court, dotColor: 'bg-emerald-500' },
+                  { name: 'Chiều', hours: [12, 13, 14, 15, 16], priceProp: 'price_afternoon' as keyof Court, dotColor: 'bg-amber-400' },
+                  { name: 'Tối', hours: [17, 18, 19, 20, 21, 22, 23], priceProp: 'price_evening' as keyof Court, dotColor: 'bg-slate-900' }
+                ].map((period, pIndex) => (
+                   <div key={period.name} className="space-y-4 bg-slate-50/50 p-4 sm:p-5 rounded-2xl border border-slate-100">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+                        <div className={`w-3 h-3 rounded-full ${period.dotColor}`}></div>
+                        Buổi {period.name}: <span className="text-orange-500">{((courts.find(c => c.id === selectedCourt) as any)?.[period.priceProp] || 2000).toLocaleString('vi-VN')}đ/h</span>
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                        <AnimatePresence mode="popLayout">
+                          {period.hours.map((hour, i) => {
+                            const slotStatus = getSlotStatus(selectedDate, hour);
+                            const isSelected = selectedHours.includes(hour);
+                            const isDisabled = slotStatus === 'passed' || slotStatus === 'paid' || slotStatus === 'unpaid';
+                            const price = getPricePerHour(hour);
 
-                    let statusClass = "";
-                    let priceColor = "";
-                    let indicatorText = "";
+                            let statusClass = "";
+                            let priceColor = "";
+                            let indicatorText = "";
+                            let badgeClass = "";
 
-                    if (slotStatus === 'passed') {
-                       statusClass = "bg-red-50/50 border-red-100 text-red-400 cursor-not-allowed opacity-60";
-                       priceColor = "text-red-300";
-                       indicatorText = "Đã qua";
-                    } else if (slotStatus === 'paid') {
-                       statusClass = "bg-emerald-50 border-emerald-300 text-emerald-700 cursor-not-allowed opacity-90";
-                       priceColor = "text-emerald-500";
-                       indicatorText = "Đã Thanh Toán";
-                    } else if (slotStatus === 'unpaid') {
-                       statusClass = "bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed opacity-90";
-                       priceColor = "text-yellow-600";
-                       indicatorText = "Chờ TT";
-                    } else if (isSelected) {
-                       statusClass = "bg-gradient-to-br from-sky-500 to-sky-600 border-sky-500 text-white shadow-lg shadow-sky-500/30 transform scale-105 z-10 ring-2 ring-sky-500/50 ring-offset-1";
-                       priceColor = "text-sky-100";
-                       indicatorText = "Đang chọn";
-                    } else {
-                       if (hour < 12) {
-                         statusClass = "bg-emerald-50/20 border-emerald-100 hover:border-emerald-300 hover:bg-emerald-50 text-slate-800";
-                         priceColor = "text-emerald-600";
-                       } else if (hour < 17) {
-                         statusClass = "bg-amber-50/20 border-amber-100 hover:border-amber-300 hover:bg-amber-50 text-slate-800";
-                         priceColor = "text-amber-600";
-                       } else {
-                         statusClass = "bg-slate-50/40 border-slate-200 hover:border-slate-400 hover:bg-slate-100 text-slate-900";
-                         priceColor = "text-slate-500 font-bold";
-                       }
-                       indicatorText = "Trống";
-                    }
+                            const currentHour = new Date().getHours();
+                            const isCurrentSlot = isSameDay(selectedDate, new Date()) && (hour === currentHour || hour === currentHour - 1);
 
-                    return (
-                      <motion.button
-                        layout
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, delay: i * 0.02 }}
-                        key={hour}
-                        disabled={isDisabled}
-                        onClick={() => handleHourClick(hour)}
-                        className={`relative h-[70px] rounded-xl border-2 transition-all flex flex-col px-3 justify-center text-left ${statusClass}`}
-                      >
-                         <div className="flex justify-between items-center w-full">
-                           <span className="text-base font-bold">{hour}:00 - {hour + 1}:00</span>
-                         </div>
-                         
-                         <div className="flex justify-between items-center w-full mt-1">
-                            <span className={`text-sm font-medium ${priceColor}`}>{price.toLocaleString('vi-VN')}đ</span>
-                            {slotStatus === 'passed' ? (
-                               <span className="text-[10px] uppercase font-bold text-red-400 bg-white/60 px-2 py-0.5 rounded-md shadow-sm">Qua</span>
-                            ) : slotStatus === 'paid' ? (
-                               <span className="text-[10px] uppercase font-bold text-emerald-600 bg-white/90 px-2 py-0.5 rounded-md shadow-sm">Đã TT</span>
-                            ) : slotStatus === 'unpaid' ? (
-                               <span className="text-[10px] uppercase font-bold text-yellow-600 bg-white/90 px-2 py-0.5 rounded-md shadow-sm">Chờ TT</span>
-                            ) : isSelected ? (
-                               <span className="text-[10px] uppercase font-bold text-sky-600 bg-white px-2 py-0.5 rounded-md shadow-sm">{indicatorText}</span>
-                            ) : (
-                               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-white/60 shadow-sm ${priceColor}`}>{indicatorText}</span>
-                            )}
-                         </div>
-                      </motion.button>
-                    )
-                  })}
-                </AnimatePresence>
+                            if (slotStatus === 'passed') {
+                               statusClass = "bg-red-600 border-red-700 text-white cursor-not-allowed opacity-90";
+                               priceColor = "text-red-100";
+                               indicatorText = "Đã qua";
+                               badgeClass = "text-red-700 bg-white px-2 py-0.5 rounded-md shadow-sm";
+                            } else if (slotStatus === 'paid') {
+                               statusClass = "bg-green-600 border-green-700 text-white cursor-not-allowed opacity-95";
+                               priceColor = "text-green-100";
+                               indicatorText = "Đã TT";
+                               badgeClass = "text-green-700 bg-white px-2 py-0.5 rounded-md shadow-sm";
+                            } else if (slotStatus === 'unpaid') {
+                               statusClass = "bg-yellow-500 border-yellow-600 text-white cursor-not-allowed opacity-95";
+                               priceColor = "text-yellow-50";
+                               indicatorText = "Chờ TT";
+                               badgeClass = "text-yellow-700 bg-white px-2 py-0.5 rounded-md shadow-sm";
+                            } else if (isSelected) {
+                               statusClass = "bg-blue-600 border-blue-700 text-white shadow-lg transform scale-105 z-10 ring-2 ring-blue-500/50 ring-offset-1";
+                               priceColor = "text-blue-100";
+                               indicatorText = "Đang chọn";
+                               badgeClass = "text-blue-700 bg-white px-2 py-0.5 rounded-md shadow-sm";
+                            } else {
+                               if (hour < 12) {
+                                 statusClass = "bg-emerald-50/40 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 text-slate-800";
+                                 priceColor = "text-emerald-700";
+                                 badgeClass = "text-emerald-700 bg-white/80 px-2 py-0.5 rounded-md shadow-sm border border-emerald-100";
+                               } else if (hour < 17) {
+                                 statusClass = "bg-amber-50/40 border-amber-200 hover:border-amber-400 hover:bg-amber-100 text-slate-800";
+                                 priceColor = "text-amber-700";
+                                 badgeClass = "text-amber-700 bg-white/80 px-2 py-0.5 rounded-md shadow-sm border border-amber-100";
+                               } else {
+                                 statusClass = "bg-slate-50/60 border-slate-300 hover:border-slate-500 hover:bg-slate-200 text-slate-900";
+                                 priceColor = "text-slate-600 font-bold";
+                                 badgeClass = "text-slate-700 bg-white/80 px-2 py-0.5 rounded-md shadow-sm border border-slate-200";
+                               }
+                               indicatorText = "Trống";
+                            }
+
+                            if (isCurrentSlot) {
+                               statusClass = "bg-purple-600 border-purple-700 text-white " + (isDisabled ? "cursor-not-allowed opacity-90" : "cursor-pointer hover:bg-purple-500");
+                               priceColor = "text-purple-100";
+                               if (indicatorText === "Trống" || indicatorText === "Đã qua") {
+                                  indicatorText = "Hiện tại";
+                               }
+                               badgeClass = "text-purple-700 bg-white px-2 py-0.5 rounded-md shadow-sm";
+                            }
+
+                            return (
+                              <motion.button
+                                layout
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: i * 0.02 }}
+                                key={hour}
+                                disabled={isDisabled}
+                                onClick={() => handleHourClick(hour)}
+                                className={`relative h-[70px] rounded-xl border-2 transition-all flex flex-col px-3 justify-center text-left overflow-hidden ${statusClass}`}
+                              >
+                                 <div className="flex justify-between items-center w-full">
+                                   <span className="text-[15px] sm:text-base font-bold whitespace-nowrap tracking-tight">{hour}:00 - {hour + 1}:00</span>
+                                 </div>
+                                 
+                                 <div className="flex justify-between items-center w-full mt-1">
+                                    <span className={`text-sm font-medium whitespace-nowrap ${priceColor}`}>{price.toLocaleString('vi-VN')}đ</span>
+                                    <span className={`text-[10px] uppercase font-bold whitespace-nowrap shrink-0 ${badgeClass}`}>{indicatorText}</span>
+                                 </div>
+                              </motion.button>
+                            )
+                          })}
+                        </AnimatePresence>
+                      </div>
+                   </div>
+                ))}
              </div>
           </div>
 
@@ -476,7 +533,7 @@ export const Booking = () => {
            <div className="space-y-4 pb-4">
              <div className="flex justify-between items-center max-w-sm">
                 <h3 className="text-lg font-semibold flex items-center text-slate-800">
-                  3. Thông Tin Liên Hệ
+                  4. Thông Tin Liên Hệ
                 </h3>
                 {!isEditingContact && (
                   <Button variant="ghost" size="sm" onClick={() => setIsEditingContact(true)} className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 gap-1 h-8">
@@ -501,8 +558,12 @@ export const Booking = () => {
                      className="bg-slate-50 border-slate-200 h-12 text-md transition-shadow focus-visible:ring-emerald-500"
                      type="tel"
                   />
-                  {localStorage.getItem('savedCustomerName') && (
-                     <Button variant="outline" size="sm" onClick={() => setIsEditingContact(false)} className="w-full">
+                  {(localStorage.getItem('staticCustomerName') || localStorage.getItem('savedCustomerName')) && (
+                     <Button variant="outline" size="sm" onClick={() => {
+                        setCustomerName(getInitialContact('name'));
+                        setCustomerPhone(getInitialContact('phone'));
+                        setIsEditingContact(false);
+                     }} className="w-full">
                        Hủy sửa
                      </Button>
                   )}
@@ -519,7 +580,7 @@ export const Booking = () => {
 
            <div className="space-y-4 pb-4">
              <h3 className="text-lg font-semibold flex items-center text-slate-800">
-               4. Dịch Vụ Tại Sân (Thanh toán sau)
+               5. Dịch Vụ Tại Sân (Thanh toán sau)
              </h3>
               <div className="p-5 bg-slate-50 rounded-xl border border-slate-100 max-w-xl">
                 {[
@@ -639,12 +700,19 @@ export const Booking = () => {
                   </>
                ) : (
                   <>
-                     <h4 className="text-orange-400 font-semibold mb-3 z-10">1. Quét Mã Thanh Toán (Thủ Công)</h4>
+                     <h4 className="text-orange-400 font-semibold mb-3 z-10">1. Quét Mã Thanh Toán (BIDV)</h4>
                      <div className="bg-white p-2 rounded-xl border-2 border-slate-600 z-10 flex flex-col items-center">
-                       <img src="/qrthanhtoan .jpg" alt="QR Thanh Toán" className="w-[180px] h-auto rounded-lg" />
+                       <img 
+                         src={`https://img.vietqr.io/image/970418-7660290201-compact2.png?amount=${receiptData?.total || 0}&addInfo=${receiptData?.id || ''}&accountName=NGUYEN%20HUY%20THAI%20NGUYEN`} 
+                         alt="QR Thanh Toán BIDV" 
+                         className="w-[200px] h-auto rounded-lg" 
+                         onError={(e) => {
+                           (e.target as HTMLImageElement).src = '/qrthanhtoan_bidv.png';
+                         }}
+                       />
                        <a 
-                         href="/qrthanhtoan .jpg" 
-                         download="QR_ThanhToan_CourtKings.jpg" 
+                         href="/qrthanhtoan_bidv.png" 
+                         download="QR_ThanhToan_CourtKings.png" 
                          className="mt-2 text-xs flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded-md font-medium transition-colors w-full"
                        >
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
@@ -655,9 +723,9 @@ export const Booking = () => {
                        <p className="text-sm text-slate-300 flex justify-between items-center mb-2">Số tiền: <span className="font-bold text-orange-400 text-xl ml-1">{receiptData?.total.toLocaleString('vi-VN')}đ</span></p>
                        <div className="w-full h-px bg-slate-700/50 mb-2"></div>
                        <p className="text-xs text-slate-400 flex flex-col items-start gap-1">
-                          <span className="mb-0.5">Vui lòng nhập chính xác Nội dung DK:</span>
+                          <span className="mb-0.5">Vui lòng nhập chính xác Nội dung DK (BẮT BUỘC):</span>
                           <span className="text-white font-mono bg-slate-800 px-3 py-1.5 rounded w-full text-left tracking-wider">
-                            {receiptData?.name} {receiptData?.phone} CHON {receiptData?.ranges.length} CA
+                            {receiptData?.id}
                           </span>
                        </p>
                      </div>

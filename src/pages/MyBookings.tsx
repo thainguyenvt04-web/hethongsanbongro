@@ -8,21 +8,8 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 import { format } from 'date-fns';
 import { Receipt, QrCode, Clock, CheckCircle2, RefreshCw } from 'lucide-react';
 
-// === CẤU HÌNH TÀI KHOẢN TIMO CỦA BẠN ===
-const TIMO_ACCOUNT_NO   = '9021164715496';  // Số TK Timo
-const TIMO_ACCOUNT_NAME = 'LE MINH DAT';    // Tên chủ TK (không dấu)
-const TIMO_BANK_BIN     = '970454';          // BIN BVBank (Timo)
-
-function buildVietQrUrl(amount: number, content: string) {
-  // Dùng API VietQR public (https://img.vietqr.io)
-  const base = 'https://img.vietqr.io/image';
-  const params = new URLSearchParams({
-    amount: String(amount),
-    addInfo: content,
-    accountName: TIMO_ACCOUNT_NAME,
-  });
-  return `${base}/${TIMO_BANK_BIN}-${TIMO_ACCOUNT_NO}-compact2.png?${params}`;
-}
+import { QRCodeCanvas } from 'qrcode.react';
+import { toast } from 'sonner';
 
 export const MyBookings = () => {
   const { user } = useAuth();
@@ -30,6 +17,9 @@ export const MyBookings = () => {
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<SavedBooking | null>(null);
+  const [payosData, setPayosData] = useState<{checkoutUrl: string, qrCode: string} | null>(null);
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+  const [loadingPayment, setLoadingPayment] = useState(false);
 
   useEffect(() => {
     if (user) fetchBookings();
@@ -46,9 +36,67 @@ export const MyBookings = () => {
     }
   };
 
-  const openPayment = (b: SavedBooking) => {
+  const fallbackToStaticQR = (b: SavedBooking) => {
+     const url = `https://img.vietqr.io/image/970418-7660290201-compact2.png?amount=${b.total}&addInfo=${b.id}&accountName=NGUYEN%20HUY%20THAI%20NGUYEN`;
+     setFallbackUrl(url);
+     setPayosData(null);
+     setShowPaymentModal(true);
+  };
+
+  const openPayment = async (b: SavedBooking) => {
     setSelectedBooking(b);
-    setShowPaymentModal(true);
+    setPayosData(null);
+    setFallbackUrl(null);
+    
+    // Kiểm tra trong localStorage trước
+    const saved = localStorage.getItem(`payos_${b.id}`);
+    if (saved) {
+      setPayosData(JSON.parse(saved));
+      setShowPaymentModal(true);
+      return;
+    }
+
+    // Nếu không có, gọi API tạo lại QR
+    let orderCode = Number(b.id);
+    if (isNaN(orderCode)) {
+      // Fallback ngay với đơn cũ
+      fallbackToStaticQR(b);
+      return;
+    }
+
+    setLoadingPayment(true);
+    try {
+      const res = await fetch('/api/recreate-payment-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldOrderCode: orderCode,
+          amount: b.total,
+          description: 'Thanh toan san',
+          returnUrl: `${window.location.origin}/#/my-bookings`,
+          cancelUrl: `${window.location.origin}/#/my-bookings`
+        })
+      });
+      const data = await res.json();
+      if (data.error === 0 && data.data) {
+         setPayosData(data.data);
+         localStorage.setItem(`payos_${data.data.newOrderCode}`, JSON.stringify({
+           checkoutUrl: data.data.checkoutUrl,
+           qrCode: data.data.qrCode
+         }));
+         // Refresh list để lấy ID mới nhất
+         fetchBookings();
+         setShowPaymentModal(true);
+      } else {
+         // Lỗi logic từ PayOS, fallback
+         fallbackToStaticQR(b);
+      }
+    } catch (e) {
+      // Lỗi mạng hoặc server sập, fallback
+      fallbackToStaticQR(b);
+    } finally {
+      setLoadingPayment(false);
+    }
   };
 
   const getStatusInfo = (b: SavedBooking) => {
@@ -132,8 +180,7 @@ export const MyBookings = () => {
                     {/* Hướng dẫn trạng thái */}
                     {!b.paid && (
                       <div className="mt-4 p-3 bg-orange-50 border border-orange-100 rounded-xl text-xs text-orange-700 leading-relaxed">
-                        ⏳ <strong>Đơn của bạn đang chờ thanh toán.</strong> Bấm "Thanh toán Timo" để chuyển tiền,
-                        hoặc Admin sẽ xác nhận thủ công. Sau khi được duyệt, bạn có thể dùng tính năng Quét Mã Mở Cửa.
+                        ⏳ <strong>Đơn của bạn đang chờ thanh toán.</strong> Bấm "Thanh toán PayOS" để quét mã thanh toán tự động duyệt.
                       </div>
                     )}
                     {b.paid && (
@@ -153,9 +200,10 @@ export const MyBookings = () => {
                     {!b.paid ? (
                       <Button
                         onClick={() => openPayment(b)}
+                        disabled={loadingPayment}
                         className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl shadow gap-1.5"
                       >
-                        <QrCode className="w-4 h-4" /> Thanh toán Timo
+                        <QrCode className="w-4 h-4" /> {loadingPayment && selectedBooking?.id === b.id ? 'Đang tạo QR...' : 'Thanh toán PayOS'}
                       </Button>
                     ) : (
                       <div className="flex flex-col items-center gap-1 text-emerald-600">
@@ -171,58 +219,59 @@ export const MyBookings = () => {
         </div>
       )}
 
-      {/* Modal QR Timo */}
+      {/* Modal QR PayOS */}
       <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-sm p-0 overflow-hidden rounded-2xl">
-          <DialogTitle className="sr-only">Thanh toán qua Timo</DialogTitle>
+          <DialogTitle className="sr-only">Thanh toán qua PayOS</DialogTitle>
           {/* Header */}
-          <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5 text-white text-center">
-            <h2 className="text-xl font-bold">Thanh toán qua Timo</h2>
-            <p className="text-slate-400 text-sm mt-1">Quét bằng bất kỳ app ngân hàng / ví</p>
+          <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 text-white text-center">
+            <h2 className="text-xl font-bold">Thanh toán tự động</h2>
+            <p className="text-white/80 text-sm mt-1">Quét bằng app ngân hàng của bạn</p>
           </div>
 
           <div className="p-5 space-y-4 flex flex-col items-center">
-            {/* VietQR động */}
-            {selectedBooking && (
-              <div className="border-4 border-slate-100 rounded-2xl p-2 shadow-inner">
-                <img
-                  src={buildVietQrUrl(selectedBooking.total, selectedBooking.id)}
-                  alt="QR Thanh Toán Timo"
-                  className="w-52 h-52 object-contain rounded-xl"
-                  onError={(e) => {
-                    // Fallback nếu chưa cấu hình TK: dùng ảnh tĩnh cũ
-                    (e.target as HTMLImageElement).src = '/qrthanhtoan .jpg';
-                  }}
-                />
+            {payosData?.qrCode && (
+              <div className="border-4 border-slate-100 rounded-2xl p-2 shadow-inner bg-white">
+                 <QRCodeCanvas value={payosData.qrCode} size={200} />
+              </div>
+            )}
+
+            {fallbackUrl && (
+              <div className="border-4 border-slate-100 rounded-2xl p-2 shadow-inner bg-white">
+                 <img src={fallbackUrl} alt="QR Thanh toán" className="w-[200px] h-auto" onError={(e) => { (e.target as HTMLImageElement).src = '/qrthanhtoan_bidv.png'; }} />
               </div>
             )}
 
             {/* Thông tin thanh toán */}
             <div className="w-full bg-slate-50 rounded-xl p-4 text-sm space-y-2 border border-slate-100">
               <div className="flex justify-between">
-                <span className="text-slate-500">Ngân hàng</span>
-                <span className="font-bold">Timo (BVBank)</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-slate-500">Số tiền</span>
                 <span className="font-bold text-orange-600 text-base">
                   {selectedBooking?.total.toLocaleString('vi-VN')} VND
                 </span>
               </div>
-              <div className="border-t border-slate-200 pt-2">
-                <p className="text-slate-500 mb-1">Nội dung <strong className="text-red-500">(BẮT BUỘC)</strong></p>
-                <div className="bg-slate-900 text-green-400 font-mono text-xs p-2 rounded-lg overflow-x-auto whitespace-nowrap tracking-wider">
-                  {selectedBooking?.id}
-                </div>
+              <div className="border-t border-slate-200 pt-2 text-center mt-2">
+                 <p className="text-xs text-slate-400">
+                    {payosData?.checkoutUrl 
+                      ? "Đơn hàng sẽ tự động duyệt sau khi thanh toán thành công." 
+                      : "Vui lòng quét mã trên. Admin sẽ duyệt đơn thủ công sau khi nhận được tiền."}
+                 </p>
+                 {fallbackUrl && (
+                    <div className="mt-2 text-left bg-slate-900 text-slate-300 p-2 rounded text-xs font-mono">
+                      Nội dung DK (BẮT BUỘC): <span className="text-white">{selectedBooking?.id}</span>
+                    </div>
+                 )}
               </div>
             </div>
 
-            <p className="text-xs text-slate-400 text-center leading-relaxed">
-              Sau khi chuyển khoản, Admin sẽ xác nhận và trạng thái đơn sẽ chuyển sang <strong>Đã thanh toán</strong>.
-            </p>
+            {payosData?.checkoutUrl && (
+               <Button onClick={() => window.location.href = payosData.checkoutUrl} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-md font-bold py-6 shadow-lg">
+                 Mở cổng thanh toán (Trình duyệt)
+               </Button>
+            )}
 
-            <Button onClick={() => setShowPaymentModal(false)} className="w-full bg-slate-900 text-white rounded-xl">
-              Đã chuyển khoản, Đóng
+            <Button onClick={() => setShowPaymentModal(false)} variant="ghost" className="w-full text-slate-500 hover:text-slate-700">
+              Đóng
             </Button>
           </div>
         </DialogContent>
