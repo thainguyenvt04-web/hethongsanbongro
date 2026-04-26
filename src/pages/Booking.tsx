@@ -26,6 +26,7 @@ export const Booking = () => {
   const [payosCheckoutUrl, setPayosCheckoutUrl] = useState<string | null>(null);
   const [payosQrCode, setPayosQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   const getInitialContact = (type: 'name' | 'phone') => {
     const staticVal = localStorage.getItem(`staticCustomer${type === 'name' ? 'Name' : 'Phone'}`);
     const tempVal = localStorage.getItem(`tempCustomer${type === 'name' ? 'Name' : 'Phone'}`);
@@ -43,6 +44,7 @@ export const Booking = () => {
     return !(getInitialContact('name') && getInitialContact('phone'));
   });
   const [receiptData, setReceiptData] = useState<{
+    id?: string;
     date: Date;
     total: number;
     name: string;
@@ -72,6 +74,37 @@ export const Booking = () => {
       console.error(e);
     }
   };
+
+  // Polling check payment status
+  useEffect(() => {
+    if (!showQR || !receiptData?.id) return;
+
+    let intervalId: any;
+    
+    const checkPaymentStatus = async () => {
+       try {
+          const { data, error } = await supabase
+             .from('bookings')
+             .select('paid')
+             .eq('id', receiptData.id)
+             .single();
+             
+          if (!error && data && data.paid) {
+             setPaymentSuccess(true);
+             toast.success('Hệ thống đã nhận được thanh toán của bạn!');
+             clearInterval(intervalId);
+             fetchAllBookings(); // Tải lại danh sách booking để cập nhật màu xanh trên giao diện
+          }
+       } catch (e) {
+          console.error(e);
+       }
+    };
+
+    // Kiểm tra mỗi 3 giây
+    intervalId = setInterval(checkPaymentStatus, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [showQR, receiptData?.id]);
 
   const getSlotStatus = (date: Date, hour: number) => {
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -243,6 +276,7 @@ export const Booking = () => {
       toast.success('Đặt sân thành công! Cảm ơn bạn.');
       setQrCode(qrString);
       setReceiptData({
+         id: generatedOrderCode.toString(),
          date: selectedDate,
          total: calculateTotal(),
          name: customerName,
@@ -643,6 +677,7 @@ export const Booking = () => {
         setShowQR(open);
         if (!open) {
           setReceiptData(null);
+          setPaymentSuccess(false);
         }
       }}>
         <DialogContent className="sm:max-w-md flex flex-col items-center justify-center p-6 bg-slate-900 border-slate-800 text-white max-h-[90vh] overflow-y-auto">
@@ -655,12 +690,33 @@ export const Booking = () => {
           
           <div className="w-full space-y-4 mt-2">
             {/* Payment Section */}
-            <div className="flex flex-col items-center bg-slate-800 p-4 rounded-2xl border border-slate-700 relative overflow-hidden">
+            <div className="flex flex-col items-center bg-slate-800 p-4 rounded-2xl border border-slate-700 relative overflow-hidden w-full transition-all duration-500">
                <div className="absolute top-0 right-0 p-2 opacity-10">
                  <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.64-2.25 1.64-1.74 0-2.33-.97-2.39-1.8H7.81c.07 1.64 1.25 2.84 3.09 3.26V19h2.32v-1.7c1.61-.31 2.88-1.38 2.88-3.03 0-2.3-1.83-3.13-3.79-3.63z" /></svg>
                </div>
                
-               {payosQrCode ? (
+               {paymentSuccess ? (
+                  <div className="flex flex-col items-center justify-center py-6 z-10 w-full animate-in zoom-in duration-500">
+                     <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(16,185,129,0.4)] relative">
+                        <motion.svg 
+                          initial={{ pathLength: 0, scale: 0.5 }}
+                          animate={{ pathLength: 1, scale: 1 }}
+                          transition={{ duration: 0.6, type: "spring", bounce: 0.4 }}
+                          xmlns="http://www.w3.org/2000/svg" 
+                          className="h-10 w-10 text-white" 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor" 
+                          strokeWidth={3.5}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </motion.svg>
+                        <div className="absolute inset-0 rounded-full border-4 border-emerald-400/50 animate-ping"></div>
+                     </div>
+                     <h3 className="text-2xl font-bold text-emerald-400 mb-2">Thanh Toán Thành Công!</h3>
+                     <p className="text-slate-300 text-center px-4">Đơn đặt sân của bạn đã được hệ thống duyệt tự động. Bạn đã có thể check-in.</p>
+                  </div>
+               ) : payosQrCode ? (
                   <>
                      <h4 className="text-orange-400 font-semibold mb-3 z-10">1. Quét Mã Thanh Toán (PayOS)</h4>
                      <div className="bg-white p-4 rounded-xl border-2 border-orange-500 z-10 flex flex-col items-center">
