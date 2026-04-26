@@ -714,7 +714,7 @@ export const Booking = () => {
                         <div className="absolute inset-0 rounded-full border-4 border-emerald-400/50 animate-ping"></div>
                      </div>
                      <h3 className="text-2xl font-bold text-emerald-400 mb-2">Thanh Toán Thành Công!</h3>
-                     <p className="text-slate-300 text-center px-4">Đơn đặt sân của bạn đã được hệ thống duyệt tự động. Bạn đã có thể check-in.</p>
+                     <p className="text-slate-300 text-center px-4">Đơn đặt sân của bạn đã được duyệt.</p>
                   </div>
                ) : payosQrCode ? (
                   <>
