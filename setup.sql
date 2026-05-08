@@ -29,16 +29,30 @@ CREATE POLICY "Cho phép tất cả xem courts" ON public.courts FOR SELECT USIN
 
 -- Bookings: 
 DROP POLICY IF EXISTS "Cho phép tất cả xem bookings" ON public.bookings;
-CREATE POLICY "Cho phép tất cả xem bookings" ON public.bookings FOR SELECT USING (true);
+CREATE POLICY "Cho phép user xem bookings của mình và admin xem tất cả" ON public.bookings FOR SELECT USING (
+    auth.uid()::text = user_id 
+    OR (auth.jwt() ->> 'email') = 'banhaomangcut@gmail.com' 
+    OR (auth.jwt() ->> 'email') LIKE '%admin%'
+);
 
 DROP POLICY IF EXISTS "Cho phép insert bookings" ON public.bookings;
-CREATE POLICY "Cho phép insert bookings" ON public.bookings FOR INSERT WITH CHECK (true);
+CREATE POLICY "Cho phép user tự tạo bookings" ON public.bookings FOR INSERT WITH CHECK (
+    auth.uid()::text = user_id
+);
 
 DROP POLICY IF EXISTS "Cho phép update bookings" ON public.bookings;
-CREATE POLICY "Cho phép update bookings" ON public.bookings FOR UPDATE USING (true);
+CREATE POLICY "Cho phép user tự cập nhật bookings" ON public.bookings FOR UPDATE USING (
+    auth.uid()::text = user_id 
+    OR (auth.jwt() ->> 'email') = 'banhaomangcut@gmail.com' 
+    OR (auth.jwt() ->> 'email') LIKE '%admin%'
+);
 
 DROP POLICY IF EXISTS "Cho phép delete bookings" ON public.bookings;
-CREATE POLICY "Cho phép delete bookings" ON public.bookings FOR DELETE USING (true);
+CREATE POLICY "Cho phép user tự xóa bookings" ON public.bookings FOR DELETE USING (
+    auth.uid()::text = user_id 
+    OR (auth.jwt() ->> 'email') = 'banhaomangcut@gmail.com' 
+    OR (auth.jwt() ->> 'email') LIKE '%admin%'
+);
 
 -- Insert dummy data cho sân
 INSERT INTO public.courts (id, name, status) VALUES 

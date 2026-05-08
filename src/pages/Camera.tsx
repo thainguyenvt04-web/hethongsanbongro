@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Camera as CameraIcon, RefreshCw } from 'lucide-react';
@@ -6,9 +6,35 @@ import { Button } from '../components/ui/button';
 
 export const Camera = () => {
   const [isLive, setIsLive] = useState(true);
-  
-  // In a real scenario, this would be the URL to the ESP32-CAM stream
-  const streamUrl = "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=800&q=80";
+  const [streamUrl, setStreamUrl] = useState("http://192.168.1.106:81/stream");
+
+  useEffect(() => {
+    const topic = 'camera/stream/url';
+    let mqttClientInstance: any = null;
+    let handleMsg: any = null;
+
+    import('../lib/mqtt').then(({ mqttClient }) => {
+      mqttClientInstance = mqttClient;
+      mqttClient.subscribe(topic);
+      
+      handleMsg = (t: string, msg: Buffer) => {
+        if (t === topic) {
+          const url = msg.toString();
+          console.log("Nhận IP Camera mới từ ESP32:", url);
+          setStreamUrl(url);
+        }
+      };
+
+      mqttClient.on('message', handleMsg);
+    }).catch(err => console.error("Lỗi import mqtt:", err));
+
+    return () => {
+      if (mqttClientInstance && handleMsg) {
+        mqttClientInstance.unsubscribe(topic);
+        mqttClientInstance.off('message', handleMsg);
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-6">

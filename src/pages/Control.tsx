@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
 import { Lightbulb, Fan, DoorOpen, Users, Clock, MapPin, ChevronRight, ArrowLeft, ShieldX, CalendarDays } from 'lucide-react';
-import { publishMessage, mqttClient } from '../lib/mqtt';
+import { mqttClient } from '../lib/mqtt';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../lib/AuthContext';
@@ -58,25 +58,63 @@ export const Control = () => {
     setDoorStatus(false);
   };
 
-  const handleToggleLight = (checked: boolean) => {
+  // Hàm gọi API Backend thay vì gửi trực tiếp lên MQTT
+  const sendSecureControl = async (device: string, action: string) => {
     if (!selectedBooking) return;
-    setLightStatus(checked);
-    publishMessage(`court/${selectedBooking.courtId}/light`, checked ? 'ON' : 'OFF');
-    toast.success(`Đèn ${selectedBooking.courtName} đã ${checked ? 'BẬT' : 'TẮT'}`);
+    try {
+      const response = await fetch('http://localhost:3000/api/control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          courtId: selectedBooking.courtId,
+          device: device,
+          action: action,
+          userId: user?.id,
+          email: user?.email
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || 'Lỗi điều khiển');
+        // Hoàn tác lại giao diện (revert state) do gọi thất bại
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      toast.error('Lỗi kết nối tới Server');
+      return false;
+    }
   };
 
-  const handleToggleFan = (checked: boolean) => {
+  const handleToggleLight = async (checked: boolean) => {
     if (!selectedBooking) return;
-    setFanStatus(checked);
-    publishMessage(`court/${selectedBooking.courtId}/fan`, checked ? 'ON' : 'OFF');
-    toast.success(`Quạt ${selectedBooking.courtName} đã ${checked ? 'BẬT' : 'TẮT'}`);
+    const success = await sendSecureControl('light', checked ? 'ON' : 'OFF');
+    if (success) {
+      setLightStatus(checked);
+      toast.success(`Đèn ${selectedBooking.courtName} đã ${checked ? 'BẬT' : 'TẮT'}`);
+    }
   };
 
-  const handleToggleDoor = (checked: boolean) => {
+  const handleToggleFan = async (checked: boolean) => {
     if (!selectedBooking) return;
-    setDoorStatus(checked);
-    publishMessage(`court/${selectedBooking.courtId}/open`, checked ? 'OPEN' : 'CLOSE');
-    toast.success(`Cửa ${selectedBooking.courtName} đã ${checked ? 'MỞ' : 'ĐÓNG'}`);
+    const success = await sendSecureControl('fan', checked ? 'ON' : 'OFF');
+    if (success) {
+      setFanStatus(checked);
+      toast.success(`Quạt ${selectedBooking.courtName} đã ${checked ? 'BẬT' : 'TẮT'}`);
+    }
+  };
+
+  const handleToggleDoor = async (checked: boolean) => {
+    if (!selectedBooking) return;
+    const success = await sendSecureControl('open', checked ? 'OPEN' : 'CLOSE');
+    if (success) {
+      setDoorStatus(checked);
+      toast.success(`Cửa ${selectedBooking.courtName} đã ${checked ? 'MỞ' : 'ĐÓNG'}`);
+    }
   };
 
   // Kiểm tra giờ hiện tại có nằm trong khung giờ đặt không
