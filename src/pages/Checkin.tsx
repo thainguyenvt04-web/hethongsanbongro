@@ -82,8 +82,10 @@ export const Checkin = () => {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Check-in Mở Cửa</h1>
-        <p className="text-slate-500">Quét mã QR trên màn hình tại cổng sân để kích hoạt giờ chơi.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-600 drop-shadow-sm">
+          Check-in Mở Cửa
+        </h1>
+        <p className="text-slate-500 mt-1">Quét mã QR trên màn hình tại cổng sân để kích hoạt giờ chơi.</p>
       </div>
 
       <Card className="overflow-hidden border-orange-200">

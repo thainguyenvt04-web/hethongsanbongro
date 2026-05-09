@@ -47,8 +47,10 @@ export const Camera = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Camera Sân</h1>
-          <p className="text-slate-500">Xem trực tiếp từ ESP32-CAM.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-600 drop-shadow-sm">
+            Camera Sân
+          </h1>
+          <p className="text-slate-500 mt-1">Xem trực tiếp từ ESP32-CAM.</p>
         </div>
         <Button variant="outline" onClick={() => setIsLive(!isLive)}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isLive ? 'animate-spin' : ''}`} />
