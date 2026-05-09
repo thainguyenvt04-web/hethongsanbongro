@@ -70,7 +70,7 @@ export const Checkin = () => {
       
       // Navigate or show success
       setTimeout(() => {
-        navigate('/control'); // After opening door, go to control panel
+        navigate('/controls'); // After opening door, go to control panel
       }, 2000);
     } else {
       toast.error('Mã QR không hợp lệ. Vui lòng quét mã trên màn hình tại sân!');
@@ -102,7 +102,7 @@ export const Checkin = () => {
               <p className="text-emerald-700 text-center">
                 Hệ thống đang mở Servo cửa và kích hoạt hệ thống điện cho sân của bạn.
               </p>
-              <Button onClick={() => navigate('/control')} className="mt-4 bg-emerald-600 hover:bg-emerald-700">
+              <Button onClick={() => navigate('/controls')} className="mt-4 bg-emerald-600 hover:bg-emerald-700">
                 Chuyển đến Bảng Điều Khiển
               </Button>
             </div>

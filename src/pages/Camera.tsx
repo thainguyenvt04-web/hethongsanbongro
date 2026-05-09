@@ -6,9 +6,17 @@ import { Button } from '../components/ui/button';
 
 export const Camera = () => {
   const [isLive, setIsLive] = useState(true);
-  const [streamUrl, setStreamUrl] = useState("http://192.168.1.106:81/stream");
+  
+  // Trỏ thẳng về API proxy của Backend (server.ts) để giải quyết lỗi Mixed Content
+  // Backend sẽ tự động lấy IP nội bộ của ESP32 thông qua MQTT và proxy nó lên.
+  const [streamUrl, setStreamUrl] = useState("/api/camera-stream");
+
+  // Ta thêm timestamp vào cuối URL để force browser tải lại luồng khi người dùng nhấn 'Tiếp tục phát'
+  const currentStreamUrl = `${streamUrl}?t=${Date.now()}`;
 
   useEffect(() => {
+    // Không cần set cứng URL nội bộ như cũ, backend lo phần proxy.
+    // Dữ liệu MQTT ở đây chỉ dùng để debug nếu cần.
     const topic = 'camera/stream/url';
     let mqttClientInstance: any = null;
     let handleMsg: any = null;
@@ -19,9 +27,8 @@ export const Camera = () => {
       
       handleMsg = (t: string, msg: Buffer) => {
         if (t === topic) {
-          const url = msg.toString();
-          console.log("Nhận IP Camera mới từ ESP32:", url);
-          setStreamUrl(url);
+          console.log("MQTT nhận IP Camera từ ESP32:", msg.toString());
+          // Không thay đổi streamUrl ở frontend vì đã dùng Proxy Backend.
         }
       };
 
@@ -67,7 +74,7 @@ export const Camera = () => {
             <div className="relative w-full h-full">
               {/* Fallback image since we don't have a real ESP32-CAM stream */}
               <img 
-                src={streamUrl} 
+                src={currentStreamUrl} 
                 alt="Live Stream" 
                 className="w-full h-full object-cover opacity-80"
                 referrerPolicy="no-referrer"
@@ -87,45 +94,6 @@ export const Camera = () => {
           )}
         </CardContent>
       </Card>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">AI Nhận diện</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Trạng thái</span>
-                <Badge className="bg-green-500">Hoạt động</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Số người</span>
-                <span className="font-bold text-lg">4</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Chuyển động cuối</span>
-                <span className="text-sm">Vừa xong</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Ảnh chụp</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" variant="secondary">
-              <CameraIcon className="mr-2 h-4 w-4" />
-              Chụp ảnh
-            </Button>
-            <p className="text-xs text-slate-500 mt-4 text-center">
-              Ảnh chụp được lưu vào Supabase Storage.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 };

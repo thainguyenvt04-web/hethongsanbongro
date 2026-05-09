@@ -33,6 +33,7 @@ CREATE POLICY "Cho phép user xem bookings của mình và admin xem tất cả"
     auth.uid()::text = user_id 
     OR (auth.jwt() ->> 'email') = 'banhaomangcut@gmail.com' 
     OR (auth.jwt() ->> 'email') LIKE '%admin%'
+    OR (auth.jwt() ->> 'email') LIKE '%thainguyenvt04%'
 );
 
 DROP POLICY IF EXISTS "Cho phép insert bookings" ON public.bookings;
@@ -45,6 +46,7 @@ CREATE POLICY "Cho phép user tự cập nhật bookings" ON public.bookings FOR
     auth.uid()::text = user_id 
     OR (auth.jwt() ->> 'email') = 'banhaomangcut@gmail.com' 
     OR (auth.jwt() ->> 'email') LIKE '%admin%'
+    OR (auth.jwt() ->> 'email') LIKE '%thainguyenvt04%'
 );
 
 DROP POLICY IF EXISTS "Cho phép delete bookings" ON public.bookings;

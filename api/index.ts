@@ -3,11 +3,22 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { PayOS } from "@payos/node";
 import { createClient } from "@supabase/supabase-js";
+import mqtt from "mqtt";
+
+const mqttBroker = process.env.VITE_MQTT_BROKER_URL || 'wss://broker.emqx.io:8084/mqtt';
+const mqttClient = mqtt.connect(mqttBroker, {
+  keepalive: 60,
+  clientId: `serverless_admin_${Math.random().toString(16).slice(3)}`,
+  protocolId: 'MQTT',
+  protocolVersion: 4,
+  clean: true,
+});
 
 dotenv.config();
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+// Sử dụng SERVICE_ROLE_KEY để webhook có quyền admin cập nhật CSDL (bỏ qua RLS)
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
@@ -141,6 +152,104 @@ app.post("/api/payos-webhook", async (req, res) => {
       message: "failed",
       data: null,
     });
+  }
+});
+
+app.get("/api/admin/bookings", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('bookings').select('*');
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ bookings: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/bookings/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from('bookings').delete().eq('id', req.params.id);
+    if (error) throw error;
+    return res.json({ error: 0 });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/admin/bookings/:id/paid", async (req, res) => {
+  try {
+    const { paid } = req.body;
+    const { error } = await supabase.from('bookings').update({ paid }).eq('id', req.params.id);
+    if (error) throw error;
+    return res.json({ error: 0 });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/check-payment/:orderCode", async (req, res) => {
+  try {
+    const orderCode = Number(req.params.orderCode);
+    const paymentInfo = await payos.paymentRequests.get(orderCode);
+    
+    if (paymentInfo && paymentInfo.status === "PAID") {
+      // Update Supabase
+      const { error } = await supabase
+        .from('bookings')
+        .update({ paid: true })
+        .eq('id', orderCode.toString());
+        
+      if (error) {
+        console.error("Lỗi cập nhật CSDL khi check:", error);
+      }
+      return res.json({ paid: true });
+    }
+    return res.json({ paid: false, status: paymentInfo?.status });
+  } catch (err: any) {
+    console.error("Lỗi khi gọi API check PayOS:", err.message);
+    return res.json({ paid: false });
+  }
+});
+
+// ==========================================
+// API BẢO MẬT ĐIỀU KHIỂN IOT (BACKEND PROXY)
+// ==========================================
+app.post("/api/control", async (req, res) => {
+  const { courtId, device, action, userId, email } = req.body;
+
+  if (!courtId || !device || !action || (!userId && !email)) {
+    return res.status(400).json({ error: "Thiếu thông tin điều khiển" });
+  }
+
+  // 1. Kiểm tra quyền của Admin
+  const isAdmin = email && (email.toLowerCase().includes('admin') || email === 'banhaomangcut@gmail.com');
+
+  if (!isAdmin) {
+    // 2. Nếu không phải Admin, kiểm tra xem User có đơn đặt sân nào đã thanh toán không
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('paid', true)
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      console.warn(`[SECURITY WARN] User ${email} cố gắng điều khiển IoT trái phép!`);
+      return res.status(403).json({ error: "Access Denied: Bạn chưa đặt sân hoặc chưa thanh toán!" });
+    }
+  }
+
+  // 3. Nếu hợp lệ, Backend sẽ đại diện gửi lệnh MQTT
+  const topic = `court/${courtId}/${device}`;
+  if (mqttClient.connected) {
+    mqttClient.publish(topic, action);
+    console.log(`[IoT CONTROL] Đã gửi lệnh hợp lệ tới: ${topic} -> ${action}`);
+    return res.json({ success: true, message: `Đã gửi lệnh ${action} thành công!` });
+  } else {
+    // If not connected, try to publish anyway (it might be queued or connect in time)
+    mqttClient.publish(topic, action);
+    return res.json({ success: true, message: `Đã gửi lệnh ${action} thành công (với độ trễ)!` });
   }
 });
 

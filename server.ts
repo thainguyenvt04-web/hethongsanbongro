@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { PayOS } from "@payos/node";
 import { createClient } from "@supabase/supabase-js";
 import mqtt from "mqtt";
+import http from 'http';
 
 const mqttBroker = process.env.VITE_MQTT_BROKER_URL || 'wss://broker.emqx.io:8084/mqtt';
 const mqttClient = mqtt.connect(mqttBroker, {
@@ -16,8 +17,18 @@ const mqttClient = mqtt.connect(mqttBroker, {
   connectTimeout: 30 * 1000,
 });
 
+let currentCameraUrl = "http://192.168.1.106:81/stream";
+
 mqttClient.on('connect', () => {
   console.log('✅ Backend connected to MQTT Broker');
+  mqttClient.subscribe('camera/stream/url');
+});
+
+mqttClient.on('message', (topic, message) => {
+  if (topic === 'camera/stream/url') {
+    currentCameraUrl = message.toString();
+    console.log("Cập nhật URL Camera trong Backend proxy:", currentCameraUrl);
+  }
 });
 
 dotenv.config();
@@ -30,6 +41,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Proxy luồng camera để điện thoại có thể xem qua mạng ngoài/HTTPS (Bypass Mixed Content)
+app.get('/api/camera-stream', (req, res) => {
+  if (!currentCameraUrl) {
+    return res.status(404).send('Camera URL not available');
+  }
+
+  http.get(currentCameraUrl, (cameraRes) => {
+    res.writeHead(cameraRes.statusCode || 200, cameraRes.headers);
+    cameraRes.pipe(res);
+  }).on('error', (err) => {
+    console.error('Lỗi khi proxy camera:', err.message);
+    if (!res.headersSent) {
+      res.status(500).send('Lỗi kết nối tới camera ESP32');
+    }
+  });
+});
 
 const payos = new PayOS({
   clientId: process.env.PAYOS_CLIENT_ID || "YOUR_CLIENT_ID",
@@ -157,6 +185,63 @@ app.post("/api/payos-webhook", async (req, res) => {
       message: "failed",
       data: null,
     });
+  }
+});
+
+app.get("/api/admin/bookings", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('bookings').select('*');
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ bookings: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/bookings/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from('bookings').delete().eq('id', req.params.id);
+    if (error) throw error;
+    return res.json({ error: 0 });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/admin/bookings/:id/paid", async (req, res) => {
+  try {
+    const { paid } = req.body;
+    const { error } = await supabase.from('bookings').update({ paid }).eq('id', req.params.id);
+    if (error) throw error;
+    return res.json({ error: 0 });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/check-payment/:orderCode", async (req, res) => {
+  try {
+    const orderCode = Number(req.params.orderCode);
+    const paymentInfo = await payos.paymentRequests.get(orderCode);
+    
+    if (paymentInfo && paymentInfo.status === "PAID") {
+      // Update Supabase
+      const { error } = await supabase
+        .from('bookings')
+        .update({ paid: true })
+        .eq('id', orderCode.toString());
+        
+      if (error) {
+        console.error("Lỗi cập nhật CSDL khi check:", error);
+      }
+      return res.json({ paid: true });
+    }
+    return res.json({ paid: false, status: paymentInfo?.status });
+  } catch (err: any) {
+    console.error("Lỗi khi gọi API check PayOS:", err.message);
+    return res.json({ paid: false });
   }
 });
 

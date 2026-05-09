@@ -62,7 +62,7 @@ export const Control = () => {
   const sendSecureControl = async (device: string, action: string) => {
     if (!selectedBooking) return;
     try {
-      const response = await fetch('http://localhost:3000/api/control', {
+      const response = await fetch('/api/control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

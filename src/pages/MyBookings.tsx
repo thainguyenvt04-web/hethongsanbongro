@@ -122,7 +122,7 @@ export const MyBookings = () => {
     <div className="space-y-6 max-w-4xl mx-auto px-2 pb-10">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Đơn Hàng Của Tôi</h1>
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-yellow-500 pb-1">Đơn Hàng Của Tôi</h1>
           <p className="text-slate-500">Lịch sử đặt sân và trạng thái thanh toán.</p>
         </div>
         <Button onClick={fetchBookings} variant="outline" size="sm" className="gap-1.5">
