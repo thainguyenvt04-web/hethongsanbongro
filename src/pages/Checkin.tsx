@@ -120,17 +120,13 @@ export const Checkin = () => {
                     handleScan(result[0].rawValue);
                   }
                 }}
-                onError={(error) => {
+                onError={(error: any) => {
                   console.error(error);
-                  if (error.message.includes('permission') || error.message.includes('allowed')) {
+                  if (error.message?.includes('permission') || error.message?.includes('allowed')) {
                     toast.error('Lỗi: Trình duyệt từ chối quyền bật Camera! Hãy đảm bảo web đang chạy bằng giao thức HTTPS hoặc cấp quyền trong cài đặt.');
                   } else {
                     toast.error('Lỗi Camera: ' + error.message);
                   }
-                }}
-                components={{
-                  tracker: true,
-                  audio: true,
                 }}
               />
               <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none"></div>
