@@ -8,11 +8,12 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../lib/AuthContext';
 import { getPaidBookingsByUserToday, getAllPaidBookingsToday, SavedBooking } from '../lib/bookingStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export const Control = () => {
   const { user, role } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [myBookings, setMyBookings] = useState<SavedBooking[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<SavedBooking | null>(null);
   const [lightStatus, setLightStatus] = useState(false);
@@ -23,16 +24,27 @@ export const Control = () => {
   // Load bookings: User sees their own, Admin sees all
   useEffect(() => {
     const fetchBookings = async () => {
+      let fetchedBookings: SavedBooking[] = [];
       if (role === 'admin') {
-        const bookings = await getAllPaidBookingsToday();
-        setMyBookings(bookings);
+        fetchedBookings = await getAllPaidBookingsToday();
       } else if (user?.id) {
-        const bookings = await getPaidBookingsByUserToday(user.id);
-        setMyBookings(bookings);
+        fetchedBookings = await getPaidBookingsByUserToday(user.id);
+      }
+      setMyBookings(fetchedBookings);
+
+      // Tự động chọn sân nếu được chuyển từ màn hình Check-in sang
+      const state = location.state as any;
+      if (state?.autoSelectCourtId && fetchedBookings.length > 0) {
+        const targetBooking = fetchedBookings.find(b => b.courtId === state.autoSelectCourtId);
+        if (targetBooking) {
+          setSelectedBooking(targetBooking);
+          // Optional: clear state after selecting so it doesn't stick
+          window.history.replaceState({}, document.title);
+        }
       }
     };
     fetchBookings();
-  }, [user, role]);
+  }, [user, role, location.state]);
 
   useEffect(() => {
     setIsConnected(mqttClient.connected);

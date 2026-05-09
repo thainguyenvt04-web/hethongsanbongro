@@ -26,6 +26,7 @@ export const Checkin = () => {
     
     // Format expected from ESP32: "COURT01_1234"
     if (text.startsWith('COURT_') || text.startsWith('COURT01')) {
+      let scannedBooking: any = null;
       
       try {
         // Kiểm tra xem khách có sân nào đã thanh toán trong ngày không
@@ -42,7 +43,7 @@ export const Checkin = () => {
         
         // Lấy lịch đặt của khung giờ hiện tại
         const currentBooking = myPaidBookings.find(booking => 
-          booking.ranges.some(r => currentHour >= r.start && currentHour < r.end)
+          booking.ranges?.some(r => currentHour >= r.start && currentHour < r.end)
         );
 
         if (!currentBooking) {
@@ -51,13 +52,15 @@ export const Checkin = () => {
           return;
         }
 
+        scannedBooking = currentBooking;
+
         const { publishMessage } = await import('../lib/mqtt');
         
         // Gửi lệnh mở cửa tương ứng với sân đã đặt
-        publishMessage(`court/${currentBooking.court_id}/open`, 'OPEN');
+        publishMessage(`court/${currentBooking.courtId}/open`, 'OPEN');
         
         // Tắt đèn & quạt tự động mở theo sân (nếu phần cứng hỗ trợ)
-        publishMessage(`court/${currentBooking.court_id}/light`, 'ON');
+        publishMessage(`court/${currentBooking.courtId}/light`, 'ON');
       } catch (e) {
         console.warn('Network / MQTT / Database error', e);
         toast.error('Lỗi khi đối chiếu thông tin (Cần mạng để hoạt động)');
@@ -70,7 +73,8 @@ export const Checkin = () => {
       
       // Navigate or show success
       setTimeout(() => {
-        navigate('/controls'); // After opening door, go to control panel
+        // Truyền state để trang /controls tự động chọn đúng sân
+        navigate('/controls', { state: { autoSelectCourtId: scannedBooking?.courtId } });
       }, 2000);
     } else {
       toast.error('Mã QR không hợp lệ. Vui lòng quét mã trên màn hình tại sân!');
