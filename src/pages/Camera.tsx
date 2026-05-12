@@ -15,8 +15,7 @@ export const Camera = () => {
   const currentStreamUrl = `${streamUrl}?t=${Date.now()}`;
 
   useEffect(() => {
-    // Không cần set cứng URL nội bộ như cũ, backend lo phần proxy.
-    // Dữ liệu MQTT ở đây chỉ dùng để debug nếu cần.
+    // Nhận trực tiếp URL (IP nội bộ hoặc ngrok) từ ESP32 qua MQTT
     const topic = 'camera/stream/url';
     let mqttClientInstance: any = null;
     let handleMsg: any = null;
@@ -27,8 +26,12 @@ export const Camera = () => {
       
       handleMsg = (t: string, msg: Buffer) => {
         if (t === topic) {
-          console.log("MQTT nhận IP Camera từ ESP32:", msg.toString());
-          // Không thay đổi streamUrl ở frontend vì đã dùng Proxy Backend.
+          const url = msg.toString();
+          console.log("MQTT nhận IP Camera từ ESP32:", url);
+          // Cập nhật URL trực tiếp ở frontend
+          // Nếu ESP32 dùng ngrok (https) thì Vercel sẽ xem được ở bất kỳ đâu
+          // Nếu ESP32 dùng IP nội bộ (http://192...) thì điện thoại cần chung WiFi & dùng localhost/HTTP
+          setStreamUrl(url);
         }
       };
 

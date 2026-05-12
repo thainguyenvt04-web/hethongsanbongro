@@ -38,9 +38,17 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SU
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// BẢO MẬT: Chỉ cho phép Web của bạn gọi API, chặn các trang web giả mạo
+const allowedOrigins = ['http://localhost:5173', 'https://sanbongronbt.vercel.app'];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Bảo mật CORS: Bị chặn vì truy cập từ tên miền lạ!'));
+    }
+  }
+}));
 
 // Proxy luồng camera để điện thoại có thể xem qua mạng ngoài/HTTPS (Bypass Mixed Content)
 app.get('/api/camera-stream', (req, res) => {

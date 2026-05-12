@@ -56,6 +56,11 @@ CREATE POLICY "Cho phép user tự xóa bookings" ON public.bookings FOR DELETE 
     OR (auth.jwt() ->> 'email') LIKE '%admin%'
 );
 
+-- BẢO MẬT CỘT 'paid': Ngăn chặn Hacker tự sửa trạng thái thanh toán từ Frontend
+-- Người dùng bình thường (authenticated) sẽ bị báo lỗi nếu cố tình gửi lệnh PATCH cột paid
+REVOKE UPDATE (paid) ON public.bookings FROM authenticated;
+REVOKE UPDATE (paid) ON public.bookings FROM anon;
+
 -- Insert dummy data cho sân
 INSERT INTO public.courts (id, name, status) VALUES 
 ('1', 'Sân A - Trong nhà (VIP)', 'available'),
