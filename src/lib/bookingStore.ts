@@ -37,6 +37,21 @@ export async function getBookings(): Promise<SavedBooking[]> {
   return (data as any[]).map(mapFromRow);
 }
 
+export async function getAdminBookings(): Promise<SavedBooking[]> {
+  if (isMockMode) return getMockBookings();
+  
+  try {
+    const res = await fetch('/api/admin/bookings');
+    if (!res.ok) throw new Error("Failed to fetch admin bookings");
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    return (json.bookings as any[]).map(mapFromRow);
+  } catch (error) {
+    console.error("Error fetching admin bookings:", error);
+    return [];
+  }
+}
+
 export async function saveBooking(booking: SavedBooking): Promise<void> {
   if (isMockMode) {
     const bookings = getMockBookings();
@@ -141,6 +156,35 @@ export async function deleteBooking(bookingId: string): Promise<void> {
     console.error("Error deleting booking:", error);
     throw error;
   }
+}
+
+// ==============================
+// CÁC HÀM DÀNH RIÊNG CHO ADMIN
+// (Sử dụng API Backend để bypass RLS)
+// ==============================
+
+export async function deleteAdminBooking(bookingId: string): Promise<void> {
+  if (isMockMode) return deleteBooking(bookingId);
+  
+  const res = await fetch(`/api/admin/bookings/${bookingId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error !== 0) throw new Error(data.error);
+}
+
+export async function updateAdminBookingPaid(bookingId: string, paid: boolean): Promise<void> {
+  if (isMockMode) {
+    if (paid) await markBookingPaid(bookingId);
+    else await markBookingUnpaid(bookingId);
+    return;
+  }
+  
+  const res = await fetch(`/api/admin/bookings/${bookingId}/paid`, { 
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paid })
+  });
+  const data = await res.json();
+  if (data.error !== 0) throw new Error(data.error);
 }
 
 function mapFromRow(row: any): SavedBooking {

@@ -26,6 +26,7 @@ export const Checkin = () => {
     
     // Format expected from ESP32: "COURT01_1234"
     if (text.startsWith('COURT_') || text.startsWith('COURT01')) {
+      let scannedBooking: any = null;
       
       try {
         // Kiểm tra xem khách có sân nào đã thanh toán trong ngày không
@@ -42,7 +43,7 @@ export const Checkin = () => {
         
         // Lấy lịch đặt của khung giờ hiện tại
         const currentBooking = myPaidBookings.find(booking => 
-          booking.ranges.some(r => currentHour >= r.start && currentHour < r.end)
+          booking.ranges?.some(r => currentHour >= r.start && currentHour < r.end)
         );
 
         if (!currentBooking) {
@@ -51,13 +52,15 @@ export const Checkin = () => {
           return;
         }
 
+        scannedBooking = currentBooking;
+
         const { publishMessage } = await import('../lib/mqtt');
         
         // Gửi lệnh mở cửa tương ứng với sân đã đặt
-        publishMessage(`court/${currentBooking.court_id}/open`, 'OPEN');
+        publishMessage(`court/${currentBooking.courtId}/open`, 'OPEN');
         
         // Tắt đèn & quạt tự động mở theo sân (nếu phần cứng hỗ trợ)
-        publishMessage(`court/${currentBooking.court_id}/light`, 'ON');
+        publishMessage(`court/${currentBooking.courtId}/light`, 'ON');
       } catch (e) {
         console.warn('Network / MQTT / Database error', e);
         toast.error('Lỗi khi đối chiếu thông tin (Cần mạng để hoạt động)');
@@ -70,7 +73,8 @@ export const Checkin = () => {
       
       // Navigate or show success
       setTimeout(() => {
-        navigate('/control'); // After opening door, go to control panel
+        // Truyền state để trang /controls tự động chọn đúng sân
+        navigate('/controls', { state: { autoSelectCourtId: scannedBooking?.courtId } });
       }, 2000);
     } else {
       toast.error('Mã QR không hợp lệ. Vui lòng quét mã trên màn hình tại sân!');
@@ -82,8 +86,10 @@ export const Checkin = () => {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Check-in Mở Cửa</h1>
-        <p className="text-slate-500">Quét mã QR trên màn hình tại cổng sân để kích hoạt giờ chơi.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-600 drop-shadow-sm">
+          Check-in Mở Cửa
+        </h1>
+        <p className="text-slate-500 mt-1">Quét mã QR trên màn hình tại cổng sân để kích hoạt giờ chơi.</p>
       </div>
 
       <Card className="overflow-hidden border-orange-200">
@@ -102,7 +108,7 @@ export const Checkin = () => {
               <p className="text-emerald-700 text-center">
                 Hệ thống đang mở Servo cửa và kích hoạt hệ thống điện cho sân của bạn.
               </p>
-              <Button onClick={() => navigate('/control')} className="mt-4 bg-emerald-600 hover:bg-emerald-700">
+              <Button onClick={() => navigate('/controls')} className="mt-4 bg-emerald-600 hover:bg-emerald-700">
                 Chuyển đến Bảng Điều Khiển
               </Button>
             </div>
@@ -114,17 +120,13 @@ export const Checkin = () => {
                     handleScan(result[0].rawValue);
                   }
                 }}
-                onError={(error) => {
+                onError={(error: any) => {
                   console.error(error);
-                  if (error.message.includes('permission') || error.message.includes('allowed')) {
+                  if (error.message?.includes('permission') || error.message?.includes('allowed')) {
                     toast.error('Lỗi: Trình duyệt từ chối quyền bật Camera! Hãy đảm bảo web đang chạy bằng giao thức HTTPS hoặc cấp quyền trong cài đặt.');
                   } else {
                     toast.error('Lỗi Camera: ' + error.message);
                   }
-                }}
-                components={{
-                  tracker: true,
-                  audio: true,
                 }}
               />
               <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none"></div>

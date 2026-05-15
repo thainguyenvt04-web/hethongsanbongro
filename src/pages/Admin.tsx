@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Court } from '../lib/supabase';
-import { getBookings, markBookingPaid, markBookingUnpaid, deleteBooking, SavedBooking } from '../lib/bookingStore';
+import { getAdminBookings, markBookingPaid, markBookingUnpaid, deleteBooking, deleteAdminBooking, updateAdminBookingPaid, SavedBooking } from '../lib/bookingStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Lock, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Trash2, QrCode } from 'lucide-react';
 
 
 
@@ -43,7 +43,7 @@ export const Admin = () => {
 
   const fetchAllBookings = async () => {
     try {
-      const data = await getBookings();
+      const data = await getAdminBookings();
       // Sort to show pending first, then by date newer
       data.sort((a, b) => {
         if (a.paid === b.paid) {
@@ -59,7 +59,7 @@ export const Admin = () => {
 
   const handleApprove = async (id: string) => {
     try {
-      await markBookingPaid(id);
+      await updateAdminBookingPaid(id, true);
       toast.success('✅ Đã duyệt - Khách có thể Check-in!');
       fetchAllBookings();
     } catch (err) {
@@ -69,7 +69,7 @@ export const Admin = () => {
 
   const handleUnapprove = async (id: string) => {
     try {
-      await markBookingUnpaid(id);
+      await updateAdminBookingPaid(id, false);
       toast.warning('↩️ Đã hủy duyệt - Đơn trở về trạng thái chờ thanh toán.');
       fetchAllBookings();
     } catch (err) {
@@ -80,12 +80,22 @@ export const Admin = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm("Xóa vĩnh viễn đơn này? Hành động không thể hoàn tác!")) {
       try {
-        await deleteBooking(id);
+        await deleteAdminBooking(id);
         toast.success('🗑️ Đã xóa đơn!');
         fetchAllBookings();
       } catch (err: any) {
-        toast.error('Lỗi khi xóa. Hãy kiểm tra RLS Policy trên Supabase.');
+        toast.error('Lỗi khi xóa!');
       }
+    }
+  };
+
+  const handleShowQR = async (courtId: string, bookingId: string) => {
+    try {
+      const { publishMessage } = await import('../lib/mqtt');
+      publishMessage(`court/${courtId}/qr`, bookingId);
+      toast.success(`Đã gửi lệnh hiện mã QR tới ESP32 ở sân ${courtId}!`);
+    } catch (err) {
+      toast.error('Lỗi kết nối MQTT!');
     }
   };
 
@@ -219,7 +229,7 @@ export const Admin = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bảng Quản trị</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Bảng Quản Trị</h1>
           <p className="text-slate-500">Quản lý sân và xem nhật ký hệ thống.</p>
         </div>
         <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
@@ -296,7 +306,18 @@ export const Admin = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {courts.map((court) => (
+                {courts.map((court) => {
+                  const currentHour = new Date().getHours();
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const isInUse = bookings.some(b => 
+                    b.courtId === court.id && 
+                    b.date === todayStr && 
+                    b.paid && 
+                    b.ranges.some(r => currentHour >= r.start && currentHour < r.end)
+                  );
+                  const displayStatus = isInUse ? 'in_use' : court.status;
+
+                  return (
                   <TableRow key={court.id}>
                     <TableCell className="font-medium">{court.id.slice(0, 8)}</TableCell>
                     <TableCell>{court.name}</TableCell>
@@ -314,8 +335,8 @@ export const Admin = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={court.status === 'available' ? 'default' : 'secondary'}>
-                        {court.status === 'available' ? 'Trống' : court.status === 'in_use' ? 'Đang sử dụng' : 'Bảo trì'}
+                      <Badge variant={displayStatus === 'available' ? 'default' : displayStatus === 'in_use' ? 'destructive' : 'secondary'}>
+                        {displayStatus === 'available' ? 'Trống' : displayStatus === 'in_use' ? 'Đang sử dụng' : 'Bảo trì'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -329,7 +350,8 @@ export const Admin = () => {
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -456,6 +478,16 @@ export const Admin = () => {
                             Hủy Duyệt
                           </Button>
                         )}
+                        {/* Nút GỬI QR - Gửi lệnh hiển thị mã QR xuống ESP32 */}
+                        <Button
+                          onClick={() => handleShowQR(b.courtId, b.id)}
+                          size="sm"
+                          variant="outline"
+                          className="border-blue-300 text-blue-600 hover:bg-blue-50 gap-1"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          Gửi QR
+                        </Button>
                         {/* Nút XÓA - luôn hiển thị */}
                         <Button
                           onClick={() => handleDelete(b.id)}
