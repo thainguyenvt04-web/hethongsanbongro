@@ -26,11 +26,7 @@ const app = express();
 const allowedOrigins = ['http://localhost:5173', 'https://sanbongronbt.vercel.app'];
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Bảo mật CORS: Bị chặn vì truy cập từ tên miền lạ!'));
-    }
+    callback(null, true);
   }
 }));
 
