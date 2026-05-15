@@ -44,8 +44,8 @@ app.post("/api/create-payment-link", async (req, res) => {
       orderCode: orderCode || Number(String(Date.now()).slice(-6)),
       amount: amount || 10000,
       description: description || "Thanh toan don hang",
-      returnUrl: returnUrl || `http://localhost:5173/`,
-      cancelUrl: cancelUrl || `http://localhost:5173/`,
+      returnUrl: returnUrl || `http://localhost:5173/booking`,
+      cancelUrl: cancelUrl || `http://localhost:5173/booking`,
     };
 
     const paymentLinkRes = await payos.paymentRequests.create(body);
@@ -83,8 +83,8 @@ app.post("/api/recreate-payment-link", async (req, res) => {
       orderCode: newOrderCode,
       amount: amount || 10000,
       description: description || "Thanh toan don hang",
-      returnUrl: returnUrl || `http://localhost:5173/`,
-      cancelUrl: cancelUrl || `http://localhost:5173/`,
+      returnUrl: returnUrl || `http://localhost:5173/booking`,
+      cancelUrl: cancelUrl || `http://localhost:5173/booking`,
     };
 
     const paymentLinkRes = await payos.paymentRequests.create(body);

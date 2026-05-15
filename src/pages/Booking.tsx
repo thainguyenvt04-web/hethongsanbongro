@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, Court, isMockMode } from '../lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -17,6 +18,8 @@ type BookedSlot = { date: string; hour: number };
 
 export const Booking = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [courts, setCourts] = useState<Court[]>([]);
   const [selectedCourt, setSelectedCourt] = useState('1');
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
@@ -74,6 +77,36 @@ export const Booking = () => {
       console.error(e);
     }
   };
+
+  // Xử lý callback từ PayOS
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const orderCode = params.get('orderCode');
+    const status = params.get('status');
+    const cancel = params.get('cancel');
+
+    if (orderCode) {
+      if (status === 'PAID' && cancel === 'false') {
+        // Kiểm tra với backend để chắc chắn đã thanh toán và cập nhật DB
+        fetch(`/api/check-payment/${orderCode}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.paid) {
+              setPaymentSuccess(true);
+              setShowQR(true);
+              toast.success('Hệ thống đã nhận được thanh toán của bạn!');
+              fetchAllBookings();
+            }
+          })
+          .catch(console.error);
+      } else if (cancel === 'true') {
+        toast.error('Bạn đã hủy thanh toán.');
+      }
+      
+      // Xoá query params khỏi URL
+      navigate('/booking', { replace: true });
+    }
+  }, [location.search, navigate]);
 
   // Polling check payment status
   useEffect(() => {
@@ -294,8 +327,8 @@ export const Booking = () => {
             amount: calculateTotal(),
             description: `Thanh toan san`,
             orderCode: generatedOrderCode, // Sử dụng Order Code chung
-            returnUrl: `${window.location.origin}/#/booking`,
-            cancelUrl: `${window.location.origin}/#/booking`
+            returnUrl: `${window.location.origin}/booking`,
+            cancelUrl: `${window.location.origin}/booking`
           })
         });
         const payosData = await payosRes.json();
