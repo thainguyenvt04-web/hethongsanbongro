@@ -62,8 +62,8 @@ export const Admin = () => {
       await updateAdminBookingPaid(id, true);
       toast.success('✅ Đã duyệt - Khách có thể Check-in!');
       fetchAllBookings();
-    } catch (err) {
-      toast.error('Lỗi khi duyệt đơn!');
+    } catch (err: any) {
+      toast.error('Lỗi khi duyệt đơn: ' + (err.message || 'Lỗi không xác định'));
     }
   };
 
@@ -72,8 +72,8 @@ export const Admin = () => {
       await updateAdminBookingPaid(id, false);
       toast.warning('↩️ Đã hủy duyệt - Đơn trở về trạng thái chờ thanh toán.');
       fetchAllBookings();
-    } catch (err) {
-      toast.error('Lỗi khi hủy duyệt!');
+    } catch (err: any) {
+      toast.error('Lỗi khi hủy duyệt: ' + (err.message || 'Lỗi không xác định'));
     }
   };
 

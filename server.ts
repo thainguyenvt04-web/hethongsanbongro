@@ -38,6 +38,14 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SU
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
+// Hỗ trợ body parser cho cả Vercel (đã parse sẵn) và local server
+app.use((req, res, next) => {
+  if (req.body && Object.keys(req.body).length > 0) {
+    return next();
+  }
+  express.json()(req, res, next);
+});
+
 // BẢO MẬT: Chỉ cho phép Web của bạn gọi API, chặn các trang web giả mạo
 const allowedOrigins = ['http://localhost:5173', 'https://sanbongronbt.vercel.app'];
 app.use(cors({
@@ -157,7 +165,7 @@ app.post("/api/payos-webhook", async (req, res) => {
   try {
     const webhookData = await payos.webhooks.verify(req.body);
 
-    if (webhookData.code === "00") {
+    if (req.body.code === "00" || req.body.success || (webhookData && webhookData.orderCode)) {
       // Payment success!
       console.log("Thanh toán thành công cho đơn hàng: ", webhookData.orderCode);
       
